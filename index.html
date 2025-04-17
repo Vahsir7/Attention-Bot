@@ -18,8 +18,10 @@
   </style>
 </head>
 <body>
-  <h2>😒 The Judgy Face Is Watching You</h2>
-  <video id="video" autoplay playsinline muted width="300" height="200"></video>
+  <h2>Attention seeking bot</h2>
+  <h4>Tilt your head and the eyes will follow you👁️👁️</h4>
+  <div ><video id="video" autoplay playsinline muted width="10" height="10"></video></div>
+  
   <canvas id="faceCanvas" width="600" height="500"></canvas>
 
   <!-- TensorFlow.js Core + WebGL backend -->
@@ -162,9 +164,9 @@
             const maxShift = eyeRadius - pupilRadius; // full range
             const smoothFactor = 0.5; // smoothing factor (lower = less jumpy)
 
-            // Flip the direction for pupil movement and add smooth factor
-            dx = -normX * maxShift * smoothFactor;
-            dy = -normY * maxShift * smoothFactor;
+            // Fix the direction by removing the negative sign
+            dx = normX * maxShift * smoothFactor; // Remove negative sign to correct the movement direction
+            dy = normY * maxShift * smoothFactor; // Same here for vertical movement
           }
         } catch (err) {
           console.error('⚠️ Face estimation error:', err);
