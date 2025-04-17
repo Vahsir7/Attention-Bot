@@ -1,0 +1,181 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <title>Judgy Face Tracker (Fixed)</title>
+  <style>
+    body {
+      background-color: #f0f0f0;
+      text-align: center;
+      font-family: sans-serif;
+    }
+    video, canvas {
+      display: inline-block;
+      vertical-align: top;
+      border: 2px solid black;
+      margin: 10px;
+    }
+  </style>
+</head>
+<body>
+  <h2>😒 The Judgy Face Is Watching You</h2>
+  <video id="video" autoplay playsinline muted width="300" height="200"></video>
+  <canvas id="faceCanvas" width="600" height="500"></canvas>
+
+  <!-- TensorFlow.js Core + WebGL backend -->
+  <script src="https://cdn.jsdelivr.net/npm/@tensorflow/tfjs@3.20.0/dist/tf.min.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/@tensorflow/tfjs-backend-webgl@3.20.0/dist/tf-backend-webgl.min.js"></script>
+
+  <!-- FaceMesh model -->
+  <script src="https://cdn.jsdelivr.net/npm/@tensorflow-models/facemesh@0.0.4/dist/facemesh.min.js"></script>
+
+  <script>
+    (async () => {
+      const video = document.getElementById('video');
+      const canvas = document.getElementById('faceCanvas');
+      const ctx = canvas.getContext('2d');
+
+      const leftEye = { x: 200, y: 200 };
+      const rightEye = { x: 400, y: 200 };
+      const eyeRadius = 50;
+      const pupilRadius = 15;
+
+      let dx = 0, dy = 0; // Initial pupil displacement
+      let faceRestingX = canvas.width / 2; // Default center position of face
+      let faceRestingY = canvas.height / 2; // Default center position of face
+
+      function drawFace(dx = 0, dy = 0, faceFound = false) {
+        ctx.clearRect(0, 0, canvas.width, canvas.height);
+
+        // Head
+        ctx.beginPath();
+        ctx.arc(300, 250, 150, 0, Math.PI * 2);
+        ctx.fillStyle = '#fde0c2';
+        ctx.fill();
+        ctx.stroke();
+
+        // Eyebrows (judgy)
+        ctx.lineWidth = 5;
+        ctx.beginPath();
+        ctx.moveTo(160, 175);
+        ctx.lineTo(220, 165);
+        ctx.stroke();
+
+        ctx.beginPath();
+        ctx.moveTo(380, 165);
+        ctx.lineTo(440, 175);
+        ctx.stroke();
+
+        // Eyes
+        ctx.fillStyle = 'white';
+        ctx.strokeStyle = 'black';
+        ctx.lineWidth = 3;
+        ctx.beginPath();
+        ctx.arc(leftEye.x, leftEye.y, eyeRadius, 0, 2 * Math.PI);
+        ctx.fill();
+        ctx.stroke();
+
+        ctx.beginPath();
+        ctx.arc(rightEye.x, rightEye.y, eyeRadius, 0, 2 * Math.PI);
+        ctx.fill();
+        ctx.stroke();
+
+        // Pupils
+        ctx.fillStyle = 'black';
+        ctx.beginPath();
+        ctx.arc(leftEye.x + dx, leftEye.y + dy, pupilRadius, 0, 2 * Math.PI);
+        ctx.fill();
+
+        ctx.beginPath();
+        ctx.arc(rightEye.x + dx, rightEye.y + dy, pupilRadius, 0, 2 * Math.PI);
+        ctx.fill();
+
+        // Mouth (judgy)
+        ctx.lineWidth = 4;
+        ctx.beginPath();
+        ctx.moveTo(250, 350);
+        ctx.lineTo(350, 350);
+        ctx.stroke();
+
+        // Debug light
+        ctx.beginPath();
+        ctx.arc(20, 20, 10, 0, 2 * Math.PI);
+        ctx.fillStyle = faceFound ? 'green' : 'red';
+        ctx.fill();
+        ctx.font = '16px sans-serif';
+        ctx.fillStyle = '#333';
+        ctx.fillText(faceFound ? 'Face detected' : 'No face', 40, 25);
+      }
+
+      drawFace(); // initial draw
+
+      // Backend
+      await tf.setBackend('webgl');
+      await tf.ready();
+      console.log('✅ Backend ready:', tf.getBackend());
+
+      // Start webcam
+      try {
+        const stream = await navigator.mediaDevices.getUserMedia({ video: true });
+        video.srcObject = stream;
+
+        await new Promise((resolve) => {
+          video.onplaying = () => {
+            console.log('🎥 Video playing', video.videoWidth, '×', video.videoHeight);
+            resolve();
+          };
+        });
+      } catch (err) {
+        console.error('🔴 Camera error:', err);
+        return;
+      }
+
+      // Load model
+      const model = await facemesh.load({ maxFaces: 1 });
+      console.log('🤖 Model loaded');
+
+      // Warm-up (optional but safe)
+      await model.estimateFaces(video, false, true);
+      console.log('🏃 First pass complete');
+
+      // Animation loop
+      async function render() {
+        let faceFound = false;
+
+        try {
+          const predictions = await model.estimateFaces(video, false, true);
+
+          if (predictions.length > 0) {
+            faceFound = true;
+            const [nx, ny] = predictions[0].scaledMesh[1]; // nose tip
+
+            // If it's the first time a face is detected, set the center as the resting position
+            if (faceRestingX === canvas.width / 2 && faceRestingY === canvas.height / 2) {
+              faceRestingX = nx;
+              faceRestingY = ny;
+            }
+
+            // Normalize based on canvas center (fix for direction and alignment)
+            const normX = (nx - faceRestingX) / (canvas.width / 2);  // Adjusted for resting center
+            const normY = (ny - faceRestingY) / (canvas.height / 2); // Adjusted for resting center
+
+            const maxShift = eyeRadius - pupilRadius; // full range
+            const smoothFactor = 0.5; // smoothing factor (lower = less jumpy)
+
+            // Flip the direction for pupil movement and add smooth factor
+            dx = -normX * maxShift * smoothFactor;
+            dy = -normY * maxShift * smoothFactor;
+          }
+        } catch (err) {
+          console.error('⚠️ Face estimation error:', err);
+        }
+
+        drawFace(dx, dy, faceFound);
+        requestAnimationFrame(render);
+      }
+
+      render();
+    })();
+  </script>
+</body>
+</html>
